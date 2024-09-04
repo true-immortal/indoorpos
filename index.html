@@ -3,53 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Path Drawer</title>
+    <title>Indoor Navigation with Sensors</title>
     <style>
-        body { margin: 0; }
-        canvas { border: 1px solid black; }
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+        }
+        #map {
+            width: 100%;
+            height: 500px;
+        }
     </style>
 </head>
 <body>
-    <canvas id="pathCanvas" width="800" height="600"></canvas>
+
+    <h1>Indoor Navigation System</h1>
+    <div id="map"></div>
+
+    <p id="sensorData">Waiting for sensor data...</p>
+
     <script>
-        const canvas = document.getElementById('pathCanvas');
-        const ctx = canvas.getContext('2d');
+        // Initialize map
+        const map = document.getElementById('map');
+        const sensorDataElement = document.getElementById('sensorData');
 
-        let x = canvas.width / 2;
-        let y = canvas.height / 2;
+        // Initial position (set this to your starting coordinates)
+        let currentPosition = { latitude: 37.7749, longitude: -122.4194 };
 
-        ctx.moveTo(x, y);
-        ctx.lineTo(x, y);
-        ctx.strokeStyle = 'blue';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        function updatePath(acceleration) {
-            x += acceleration.x * 10;
-            y -= acceleration.y * 10;
-
-            x = Math.max(0, Math.min(canvas.width, x));
-            y = Math.max(0, Math.min(canvas.height, y));
-
-            ctx.lineTo(x, y);
-            ctx.stroke();
+        // Update map based on position (this is a placeholder for map rendering)
+        function updateMap(position) {
+            // For simplicity, just display position data
+            map.innerHTML = `Latitude: ${position.latitude}, Longitude: ${position.longitude}`;
         }
 
-        if (window.DeviceOrientationEvent) {
-            window.addEventListener('deviceorientation', function(event) {
-                const beta = event.beta; // Rotation around x-axis
-                const gamma = event.gamma; // Rotation around y-axis
+        // Access accelerometer and gyroscope data
+        if (window.DeviceMotionEvent) {
+            window.addEventListener('devicemotion', (event) => {
+                const acceleration = event.acceleration;
+                const rotationRate = event.rotationRate;
 
-                const acceleration = {
-                    x: beta,
-                    y: gamma
-                };
+                if (acceleration && rotationRate) {
+                    // Adjust position based on accelerometer data
+                    currentPosition.latitude += acceleration.y * 0.00001;
+                    currentPosition.longitude += acceleration.x * 0.00001;
 
-                updatePath(acceleration);
-            }, true);
+                    updateMap(currentPosition);
+
+                    // Display sensor data
+                    sensorDataElement.innerText = `
+                        Acceleration X: ${acceleration.x.toFixed(2)} m/s², 
+                        Acceleration Y: ${acceleration.y.toFixed(2)} m/s², 
+                        Acceleration Z: ${acceleration.z.toFixed(2)} m/s²
+                        Rotation Alpha: ${rotationRate.alpha.toFixed(2)}°/s, 
+                        Rotation Beta: ${rotationRate.beta.toFixed(2)}°/s, 
+                        Rotation Gamma: ${rotationRate.gamma.toFixed(2)}°/s
+                    `;
+                }
+            });
         } else {
-            alert('DeviceOrientationEvent is not supported');
+            sensorDataElement.innerText = 'DeviceMotionEvent is not supported on this device/browser.';
         }
     </script>
+
 </body>
 </html>
