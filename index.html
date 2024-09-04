@@ -31,31 +31,26 @@
     <div id="map"></div>
     <button id="startTracking">Start Tracking</button>
     <button id="stopTracking">Stop Tracking</button>
+    <button id="calibrate">Calibrate</button>
     <div id="debug"></div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             let tracking = false;
-            let lastPosition = { x: 100, y: 100 }; // Initial position in pixels
+            let calibrating = false;
+            let calibrationOffsets = { accX: 0, accY: 0, accZ: 0 };
+            let lastPosition = { x: 100, y: 100 }; // Initial position
+            let prevAcceleration = { x: 0, y: 0 };
+            let prevTime = Date.now();
             const map = document.getElementById('map');
             const mapWidth = map.offsetWidth;
             const mapHeight = map.offsetHeight;
 
-            // Calibration and filter parameters
-            const calibration = {
-                accOffsetX: 0,
-                accOffsetY: 0,
-                accOffsetZ: 0,
-                gyroOffsetAlpha: 0,
-                gyroOffsetBeta: 0,
-                gyroOffsetGamma: 0
-            };
-
             const movementThreshold = 0.2; // Minimum movement to consider as significant
-            const updateInterval = 100; // Update interval in milliseconds
+            const alpha = 0.2; // Smoothing factor for low-pass filter
 
             // Low-pass filter for smoothing
-            const lowPassFilter = (value, previousValue, alpha) => {
+            const lowPassFilter = (value, previousValue) => {
                 return alpha * value + (1 - alpha) * previousValue;
             };
 
@@ -71,32 +66,36 @@
                 if (!tracking) return;
 
                 const acceleration = event.accelerationIncludingGravity;
-                const gyro = event.rotationRate;
+                const currentTime = Date.now();
+                const deltaTime = (currentTime - prevTime) / 1000; // Time in seconds
 
-                // Calibration
-                const accX = acceleration.x - calibration.accOffsetX;
-                const accY = acceleration.y - calibration.accOffsetY;
+                // Apply calibration offsets
+                const accX = acceleration.x - calibrationOffsets.accX;
+                const accY = acceleration.y - calibrationOffsets.accY;
 
                 // Apply low-pass filter to smooth data
-                const filteredAccX = lowPassFilter(accX, lastPosition.x, 0.2);
-                const filteredAccY = lowPassFilter(accY, lastPosition.y, 0.2);
+                const filteredAccX = lowPassFilter(accX, prevAcceleration.x);
+                const filteredAccY = lowPassFilter(accY, prevAcceleration.y);
 
-                // Apply movement detection
-                const ax = Math.abs(filteredAccX) > movementThreshold ? filteredAccX : 0;
-                const ay = Math.abs(filteredAccY) > movementThreshold ? filteredAccY : 0;
+                // Update position only if significant movement detected
+                if (Math.abs(filteredAccX) > movementThreshold || Math.abs(filteredAccY) > movementThreshold) {
+                    lastPosition.x += filteredAccX * deltaTime * 10; // Scale factor for better visualization
+                    lastPosition.y += filteredAccY * deltaTime * 10;
 
-                // Update position
-                lastPosition.x += ax * updateInterval / 1000;
-                lastPosition.y += ay * updateInterval / 1000;
+                    // Boundary handling
+                    if (lastPosition.x < 0) lastPosition.x = 0;
+                    if (lastPosition.x > mapWidth) lastPosition.x = mapWidth;
+                    if (lastPosition.y < 0) lastPosition.y = 0;
+                    if (lastPosition.y > mapHeight) lastPosition.y = mapHeight;
 
-                // Boundary handling
-                if (lastPosition.x < 0) lastPosition.x = 0;
-                if (lastPosition.x > mapWidth) lastPosition.x = mapWidth;
-                if (lastPosition.y < 0) lastPosition.y = 0;
-                if (lastPosition.y > mapHeight) lastPosition.y = mapHeight;
+                    // Update marker position on map
+                    updatePosition(lastPosition.x, lastPosition.y);
+                }
 
-                // Update marker position on map
-                updatePosition(lastPosition.x, lastPosition.y);
+                // Update previous values
+                prevAcceleration.x = filteredAccX;
+                prevAcceleration.y = filteredAccY;
+                prevTime = currentTime;
 
                 // Debugging output
                 document.getElementById('debug').innerHTML = `
@@ -105,14 +104,48 @@
                 `;
             };
 
+            const calibrate = () => {
+                calibrating = true;
+                const accXReadings = [];
+                const accYReadings = [];
+                const accZReadings = [];
+                const numReadings = 100; // Number of readings for calibration
+
+                const calibrationInterval = setInterval(() => {
+                    if (accXReadings.length >= numReadings) {
+                        clearInterval(calibrationInterval);
+                        calibrationOffsets.accX = accXReadings.reduce((a, b) => a + b) / numReadings;
+                        calibrationOffsets.accY = accYReadings.reduce((a, b) => a + b) / numReadings;
+                        calibrationOffsets.accZ = accZReadings.reduce((a, b) => a + b) / numReadings;
+                        calibrating = false;
+                        document.getElementById('debug').innerHTML += '<br>Calibration complete!';
+                        return;
+                    }
+                    // Accumulate readings
+                    window.addEventListener('devicemotion', (event) => {
+                        if (calibrating) {
+                            accXReadings.push(event.accelerationIncludingGravity.x);
+                            accYReadings.push(event.accelerationIncludingGravity.y);
+                            accZReadings.push(event.accelerationIncludingGravity.z);
+                        }
+                    });
+                }, 100); // Collect data every 100 ms
+            };
+
             window.addEventListener('devicemotion', handleDeviceMotion);
 
             document.getElementById('startTracking').addEventListener('click', () => {
                 tracking = true;
+                lastPosition = { x: 100, y: 100 }; // Reset position on start
+                document.getElementById('map').innerHTML = ''; // Clear previous path
             });
 
             document.getElementById('stopTracking').addEventListener('click', () => {
                 tracking = false;
+            });
+
+            document.getElementById('calibrate').addEventListener('click', () => {
+                calibrate();
             });
 
             // Ensure correct initialization of position on page load
