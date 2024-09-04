@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLE Indoor Navigation</title>
+    <title>PDR Indoor Navigation</title>
     <style>
         #map {
             width: 100%;
@@ -14,11 +14,11 @@
             background-size: cover;
             overflow: hidden;
         }
-        .device {
+        .user-marker {
             position: absolute;
             width: 10px;
             height: 10px;
-            background-color: blue;
+            background-color: red;
             border-radius: 50%;
         }
         #debug {
@@ -27,113 +27,100 @@
     </style>
 </head>
 <body>
-    <h1>Indoor Navigation System using BLE</h1>
+    <h1>Indoor Navigation System using PDR</h1>
     <div id="map"></div>
-    <button id="scanBLE">Start Scanning for BLE Devices</button>
     <button id="clearMap">Clear Map</button>
     <div id="debug"></div>
 
     <script>
-        // Ensure Web Bluetooth API is available
-        if (!navigator.bluetooth) {
-            document.getElementById('debug').innerHTML = 'Web Bluetooth API not supported.';
-        }
+        let x = 0, y = 0; // Initial position
+        let stepCount = 0;
+        let lastTimestamp = 0;
+        const stepLength = 0.7; // Average step length in meters
+        let heading = 0; // Current heading in radians
 
-        const map = document.getElementById('map');
-        const mapWidth = map.offsetWidth;
-        const mapHeight = map.offsetHeight;
+        // Initialize sensors
+        async function initSensors() {
+            if ('Accelerometer' in window && 'Gyroscope' in window && 'Magnetometer' in window) {
+                try {
+                    const accelerometer = new Accelerometer({ frequency: 60 });
+                    const gyroscope = new Gyroscope({ frequency: 60 });
+                    const magnetometer = new Magnetometer({ frequency: 60 });
 
-        // Function to start scanning for BLE devices
-        async function scanBLEDevices() {
-            try {
-                // Request device
-                const device = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: true,
-                    optionalServices: [] // Specify services if needed
-                });
+                    accelerometer.addEventListener('reading', () => handleAccelerometer(accelerometer));
+                    gyroscope.addEventListener('reading', () => handleGyroscope(gyroscope));
+                    magnetometer.addEventListener('reading', () => handleMagnetometer(magnetometer));
 
-                // Connect to the device
-                const server = await device.gatt.connect();
-                document.getElementById('debug').innerHTML = `Connected to: ${device.name}`;
+                    await accelerometer.start();
+                    await gyroscope.start();
+                    await magnetometer.start();
 
-                // Get primary services
-                const services = await server.getPrimaryServices();
-                services.forEach(async (service) => {
-                    const characteristics = await service.getCharacteristics();
-                    characteristics.forEach(characteristic => {
-                        if (characteristic.properties.notify) {
-                            characteristic.startNotifications();
-                            characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
-                        }
-                    });
-                });
-
-                device.addEventListener('gattserverdisconnected', () => {
-                    document.getElementById('debug').innerHTML += '<br>Device disconnected.';
-                });
-
-            } catch (error) {
-                handleError(error);
+                    document.getElementById('debug').innerHTML = 'Sensors initialized and started.';
+                } catch (error) {
+                    console.error('Error initializing sensors:', error);
+                    document.getElementById('debug').innerHTML = 'Error initializing sensors.';
+                }
+            } else {
+                document.getElementById('debug').innerHTML = 'Sensors not supported.';
             }
         }
 
-        // Handle characteristic value changes
-        function handleCharacteristicValueChanged(event) {
-            const characteristic = event.target;
-            const value = characteristic.value;
-            
-            const rssi = parseRSSI(value); // Function to extract RSSI from characteristic value
-            
-            updateDeviceMarker(rssi);
-        }
+        // Handle accelerometer data
+        function handleAccelerometer(accelerometer) {
+            const { x: accelX, y: accelY, z: accelZ } = accelerometer;
+            const timestamp = Date.now();
 
-        // Function to parse RSSI from characteristic value
-        function parseRSSI(value) {
-            return value.getInt8(0); // Example: adapt based on actual BLE data format
-        }
-
-        // Update device marker based on RSSI value
-        function updateDeviceMarker(rssi) {
-            const distance = calculateDistanceFromRSSI(rssi);
-
-            const x = Math.random() * mapWidth; // Replace with actual x-coordinate calculation
-            const y = Math.random() * mapHeight; // Replace with actual y-coordinate calculation
-
-            const deviceMarker = document.createElement('div');
-            deviceMarker.className = 'device';
-            deviceMarker.style.left = `${x}px`;
-            deviceMarker.style.top = `${y}px`;
-            map.appendChild(deviceMarker);
-
-            document.getElementById('debug').innerHTML += `<br>Device RSSI: ${rssi}, Position: X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}`;
-        }
-
-        // Convert RSSI to distance
-        function calculateDistanceFromRSSI(rssi) {
-            const txPower = -59;
-            if (rssi === 0) return -1.0;
-            const ratio = rssi * 1.0 / txPower;
-            if (ratio < 1.0) return Math.pow(ratio, 10);
-            else {
-                const distance =  (0.89976) * Math.pow(ratio, 7.7095) + 0.111;
-                return distance;
+            // Simple step detection based on acceleration
+            if (timestamp - lastTimestamp > 500) { // Assuming step detection every 500ms
+                if (Math.abs(accelZ) > 9) { // Simple threshold for step detection
+                    stepCount++;
+                    const distance = stepCount * stepLength;
+                    updatePosition(distance);
+                }
+                lastTimestamp = timestamp;
             }
         }
 
-        // Enhanced error handling
-        function handleError(error) {
-            console.log('Error:', error);
-            document.getElementById('debug').innerHTML = `Error: ${error.message}`;
+        // Handle gyroscope data
+        function handleGyroscope(gyroscope) {
+            const { alpha, beta, gamma } = gyroscope;
+            // Integrate gyroscope data to compute heading change
+            heading += gamma * Math.PI / 180 / 60; // Convert from degrees to radians per second
+            heading = (heading + 2 * Math.PI) % (2 * Math.PI); // Normalize heading to 0-2π
         }
 
-        // Handle scanning for BLE devices
-        document.getElementById('scanBLE').addEventListener('click', scanBLEDevices);
+        // Handle magnetometer data
+        function handleMagnetometer(magnetometer) {
+            const { x: magX, y: magY, z: magZ } = magnetometer;
+            // Use magnetometer data to correct heading drift
+            const magHeading = Math.atan2(magY, magX);
+            heading = 0.9 * heading + 0.1 * magHeading; // Simple fusion
+        }
+
+        // Update user position on map
+        function updatePosition(distance) {
+            const dx = distance * Math.cos(heading);
+            const dy = distance * Math.sin(heading);
+
+            x += dx;
+            y += dy;
+
+            const marker = document.createElement('div');
+            marker.className = 'user-marker';
+            marker.style.left = `${x}px`;
+            marker.style.top = `${y}px`;
+            document.getElementById('map').appendChild(marker);
+
+            document.getElementById('debug').innerHTML += `<br>Position: X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}, Heading: ${heading.toFixed(2)}`;
+        }
 
         // Clear map markers
         document.getElementById('clearMap').addEventListener('click', () => {
-            const markers = document.querySelectorAll('.device');
+            const markers = document.querySelectorAll('.user-marker');
             markers.forEach(marker => marker.remove());
         });
+
+        initSensors();
     </script>
 </body>
 </html>
