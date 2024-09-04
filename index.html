@@ -27,7 +27,7 @@
     </style>
 </head>
 <body>
-    <h1>Indoor Navigation System using PDR</h1>
+    <h1>Indoor Navigation System using Device Orientation</h1>
     <div id="map"></div>
     <button id="clearMap">Clear Map</button>
     <div id="debug"></div>
@@ -39,62 +39,34 @@
         const stepLength = 0.7; // Average step length in meters
         let heading = 0; // Current heading in radians
 
-        // Initialize sensors
-        async function initSensors() {
-            if ('Accelerometer' in window && 'Gyroscope' in window && 'Magnetometer' in window) {
-                try {
-                    const accelerometer = new Accelerometer({ frequency: 60 });
-                    const gyroscope = new Gyroscope({ frequency: 60 });
-                    const magnetometer = new Magnetometer({ frequency: 60 });
-
-                    accelerometer.addEventListener('reading', () => handleAccelerometer(accelerometer));
-                    gyroscope.addEventListener('reading', () => handleGyroscope(gyroscope));
-                    magnetometer.addEventListener('reading', () => handleMagnetometer(magnetometer));
-
-                    await accelerometer.start();
-                    await gyroscope.start();
-                    await magnetometer.start();
-
-                    document.getElementById('debug').innerHTML = 'Sensors initialized and started.';
-                } catch (error) {
-                    console.error('Error initializing sensors:', error);
-                    document.getElementById('debug').innerHTML = 'Error initializing sensors.';
-                }
+        // Initialize DeviceOrientationEvent listener
+        function initSensors() {
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener('deviceorientation', handleOrientation);
+                document.getElementById('debug').innerHTML = 'Device Orientation API initialized.';
             } else {
-                document.getElementById('debug').innerHTML = 'Sensors not supported.';
+                document.getElementById('debug').innerHTML = 'Device Orientation API not supported.';
             }
         }
 
-        // Handle accelerometer data
-        function handleAccelerometer(accelerometer) {
-            const { x: accelX, y: accelY, z: accelZ } = accelerometer;
-            const timestamp = Date.now();
+        // Handle DeviceOrientationEvent data
+        function handleOrientation(event) {
+            const alpha = event.alpha; // Rotation around the z-axis (compass direction)
+            const beta = event.beta; // Tilt left/right
+            const gamma = event.gamma; // Tilt front/back
 
-            // Simple step detection based on acceleration
+            // Convert alpha to radians
+            heading = alpha * Math.PI / 180;
+
+            // Simulate step detection and movement
+            const timestamp = Date.now();
             if (timestamp - lastTimestamp > 500) { // Assuming step detection every 500ms
-                if (Math.abs(accelZ) > 9) { // Simple threshold for step detection
-                    stepCount++;
-                    const distance = stepCount * stepLength;
-                    updatePosition(distance);
-                }
+                // Simulate step detection
+                stepCount++;
+                const distance = stepCount * stepLength;
+                updatePosition(distance);
                 lastTimestamp = timestamp;
             }
-        }
-
-        // Handle gyroscope data
-        function handleGyroscope(gyroscope) {
-            const { alpha, beta, gamma } = gyroscope;
-            // Integrate gyroscope data to compute heading change
-            heading += gamma * Math.PI / 180 / 60; // Convert from degrees to radians per second
-            heading = (heading + 2 * Math.PI) % (2 * Math.PI); // Normalize heading to 0-2π
-        }
-
-        // Handle magnetometer data
-        function handleMagnetometer(magnetometer) {
-            const { x: magX, y: magY, z: magZ } = magnetometer;
-            // Use magnetometer data to correct heading drift
-            const magHeading = Math.atan2(magY, magX);
-            heading = 0.9 * heading + 0.1 * magHeading; // Simple fusion
         }
 
         // Update user position on map
