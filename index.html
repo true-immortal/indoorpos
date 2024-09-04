@@ -20,6 +20,9 @@
             background-color: red;
             border-radius: 50%;
         }
+        #debug {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -27,6 +30,7 @@
     <div id="map"></div>
     <button id="startTracking">Start Tracking</button>
     <button id="stopTracking">Stop Tracking</button>
+    <div id="debug"></div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -92,6 +96,10 @@
                 return angle;
             };
 
+            const lowPassFilter = (value, previousValue, alpha) => {
+                return alpha * value + (1 - alpha) * previousValue;
+            };
+
             const updatePosition = (x, y) => {
                 const marker = document.createElement('div');
                 marker.className = 'marker';
@@ -110,9 +118,13 @@
                 const accX = acceleration.x - calibration.accOffsetX;
                 const accY = acceleration.y - calibration.accOffsetY;
 
+                // Apply low-pass filter to smooth data
+                const filteredAccX = lowPassFilter(accX, previousAcceleration.x, 0.2);
+                const filteredAccY = lowPassFilter(accY, previousAcceleration.y, 0.2);
+
                 // Apply filtering
-                const ax = Math.abs(accX) > movementThreshold ? accX : 0;
-                const ay = Math.abs(accY) > movementThreshold ? accY : 0;
+                const ax = Math.abs(filteredAccX) > movementThreshold ? filteredAccX : 0;
+                const ay = Math.abs(filteredAccY) > movementThreshold ? filteredAccY : 0;
 
                 // Kalman filter application
                 const angleX = kalmanFilter(ax, gyro.alpha - calibration.gyroOffsetAlpha);
@@ -135,8 +147,16 @@
                 updatePosition(lastPosition.x, lastPosition.y);
 
                 // Update previous values
-                previousAcceleration = acceleration;
+                previousAcceleration.x = filteredAccX;
+                previousAcceleration.y = filteredAccY;
                 previousGyro = gyro;
+
+                // Debugging output
+                document.getElementById('debug').innerHTML = `
+                    Acceleration: X: ${filteredAccX.toFixed(2)}, Y: ${filteredAccY.toFixed(2)}<br>
+                    Gyroscope: Alpha: ${gyro.alpha.toFixed(2)}, Beta: ${gyro.beta.toFixed(2)}, Gamma: ${gyro.gamma.toFixed(2)}<br>
+                    Position: X: ${lastPosition.x.toFixed(2)}, Y: ${lastPosition.y.toFixed(2)}
+                `;
             };
 
             window.addEventListener('devicemotion', handleDeviceMotion);
