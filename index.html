@@ -39,8 +39,9 @@
         const stepLength = 0.7; // Average step length in meters
         const movementThreshold = 0.5; // Movement threshold to reduce noise
         const accelerationThreshold = 0.5; // Acceleration threshold to detect steps
+        let heading = 0; // Current heading in radians
 
-        // Initialize DeviceOrientationEvent listener
+        // Initialize DeviceOrientationEvent and DeviceMotionEvent listeners
         function initSensors() {
             if (window.DeviceOrientationEvent && window.DeviceMotionEvent) {
                 window.addEventListener('deviceorientation', handleOrientation);
@@ -53,12 +54,8 @@
 
         // Handle DeviceOrientationEvent data
         function handleOrientation(event) {
-            // Convert alpha to radians
             const alpha = event.alpha || 0;
-            const heading = alpha * Math.PI / 180;
-
-            // Store heading for movement calculation
-            window.currentHeading = heading;
+            heading = alpha * Math.PI / 180; // Convert alpha to radians
         }
 
         // Handle DeviceMotionEvent data
@@ -71,9 +68,8 @@
                                               acceleration.y * acceleration.y +
                                               acceleration.z * acceleration.z);
 
-            // Check if movement detected
+            // Check if significant movement is detected
             if (timestamp - lastTimestamp > 500 && accelMagnitude > accelerationThreshold) {
-                // Simulate step detection
                 const distance = stepLength;
                 updatePosition(distance);
                 lastTimestamp = timestamp;
@@ -82,15 +78,15 @@
 
         // Update user position on map
         function updatePosition(distance) {
-            const heading = window.currentHeading || 0;
+            // Calculate movement in x and y directions based on heading
             const dx = distance * Math.cos(heading);
             const dy = distance * Math.sin(heading);
 
-            // Calculate new position
+            // Update position
             x += dx;
             y += dy;
 
-            // Ensure that the path only updates if there is significant movement
+            // Ensure the path is only updated if there is significant movement
             if (Math.abs(x - lastX) > movementThreshold || Math.abs(y - lastY) > movementThreshold) {
                 const marker = document.createElement('div');
                 marker.className = 'user-marker';
