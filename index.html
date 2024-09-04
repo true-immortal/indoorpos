@@ -34,7 +34,7 @@
     <div id="debug"></div>
 
     <script>
-        // Check if the Web Bluetooth API is available
+        // Ensure Web Bluetooth API is available
         if (!navigator.bluetooth) {
             document.getElementById('debug').innerHTML = 'Web Bluetooth API not supported.';
         }
@@ -54,13 +54,13 @@
 
                 // Connect to the device
                 const server = await device.gatt.connect();
+                document.getElementById('debug').innerHTML = `Connected to: ${device.name}`;
+
+                // Get primary services
                 const services = await server.getPrimaryServices();
-                
-                // Handle characteristics (For demonstration, use a battery service)
                 services.forEach(async (service) => {
                     const characteristics = await service.getCharacteristics();
                     characteristics.forEach(characteristic => {
-                        // Monitor the characteristic value for updates
                         if (characteristic.properties.notify) {
                             characteristic.startNotifications();
                             characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
@@ -68,38 +68,36 @@
                     });
                 });
 
-                document.getElementById('debug').innerHTML = `Connected to: ${device.name}`;
+                device.addEventListener('gattserverdisconnected', () => {
+                    document.getElementById('debug').innerHTML += '<br>Device disconnected.';
+                });
+
             } catch (error) {
-                console.log('Error:', error);
-                document.getElementById('debug').innerHTML = `Error: ${error.message}`;
+                handleError(error);
             }
         }
 
-        // Handle characteristic value changes (RSSI or similar)
+        // Handle characteristic value changes
         function handleCharacteristicValueChanged(event) {
             const characteristic = event.target;
             const value = characteristic.value;
             
-            // Example: Process RSSI value (this part needs to be adapted to your BLE device's characteristic)
             const rssi = parseRSSI(value); // Function to extract RSSI from characteristic value
             
-            // Update position on map based on RSSI value
             updateDeviceMarker(rssi);
         }
 
-        // Function to parse RSSI from characteristic value (adapt this based on actual device)
+        // Function to parse RSSI from characteristic value
         function parseRSSI(value) {
-            // Example parsing (assuming RSSI is a single byte)
-            return value.getInt8(0); // Adapt based on actual BLE data format
+            return value.getInt8(0); // Example: adapt based on actual BLE data format
         }
 
         // Update device marker based on RSSI value
         function updateDeviceMarker(rssi) {
-            const distance = calculateDistanceFromRSSI(rssi); // Convert RSSI to distance
+            const distance = calculateDistanceFromRSSI(rssi);
 
-            // Example positioning logic (this should be replaced with your positioning algorithm)
-            const x = Math.random() * mapWidth; // Replace with actual x-coordinate
-            const y = Math.random() * mapHeight; // Replace with actual y-coordinate
+            const x = Math.random() * mapWidth; // Replace with actual x-coordinate calculation
+            const y = Math.random() * mapHeight; // Replace with actual y-coordinate calculation
 
             const deviceMarker = document.createElement('div');
             deviceMarker.className = 'device';
@@ -110,16 +108,22 @@
             document.getElementById('debug').innerHTML += `<br>Device RSSI: ${rssi}, Position: X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}`;
         }
 
-        // Convert RSSI to distance (simple model; replace with actual algorithm)
+        // Convert RSSI to distance
         function calculateDistanceFromRSSI(rssi) {
-            const txPower = -59; // Transmit power at 1 meter (change based on your device)
-            if (rssi === 0) return -1.0; // if we cannot determine accuracy, return -1.
+            const txPower = -59;
+            if (rssi === 0) return -1.0;
             const ratio = rssi * 1.0 / txPower;
             if (ratio < 1.0) return Math.pow(ratio, 10);
             else {
                 const distance =  (0.89976) * Math.pow(ratio, 7.7095) + 0.111;
                 return distance;
             }
+        }
+
+        // Enhanced error handling
+        function handleError(error) {
+            console.log('Error:', error);
+            document.getElementById('debug').innerHTML = `Error: ${error.message}`;
         }
 
         // Handle scanning for BLE devices
