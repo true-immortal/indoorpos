@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Path Tracing with Sensors (Samsung Galaxy S21 FE)</title>
+    <title>Path Tracing with Sensors (Enhanced Stability)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -29,15 +29,36 @@
 
         // Initial position in the middle of the canvas
         let position = { x: canvas.width / 2, y: canvas.height / 2 };
+        let lastPosition = { ...position };
         let lastTimestamp = null;
 
-        // Threshold to filter out noise
-        const accelerationThreshold = 0.05; // Lower threshold for high-sensitivity devices
-        const movementScale = 200; // Higher scale factor for better visibility
+        // Threshold to filter out noise and scale for movement
+        const accelerationThreshold = 0.2;
+        const movementScale = 0.05; 
+
+        // Low-pass filter constants
+        const alpha = 0.8;
+        let filteredAcceleration = { x: 0, y: 0, z: 0 };
+
+        // Moving average window size
+        const windowSize = 5;
+        let movementX = [];
+        let movementY = [];
 
         // Draw the starting point
         ctx.beginPath();
-        ctx.moveTo(position.x, position.y); // Start drawing path from the initial position
+        ctx.moveTo(position.x, position.y);
+
+        // Low-pass filter function
+        function lowPassFilter(newValue, previousValue) {
+            return alpha * previousValue + (1 - alpha) * newValue;
+        }
+
+        // Moving average calculation
+        function movingAverage(values) {
+            const sum = values.reduce((a, b) => a + b, 0);
+            return sum / values.length;
+        }
 
         // Listen for device motion events
         if (window.DeviceMotionEvent) {
@@ -46,34 +67,49 @@
                 const timestamp = event.timeStamp;
 
                 if (acceleration && lastTimestamp !== null) {
+                    // Apply low-pass filter
+                    filteredAcceleration.x = lowPassFilter(acceleration.x, filteredAcceleration.x);
+                    filteredAcceleration.y = lowPassFilter(acceleration.y, filteredAcceleration.y);
+
                     const deltaTime = (timestamp - lastTimestamp) / 1000; // in seconds
 
-                    // Check if acceleration exceeds threshold
-                    if (Math.abs(acceleration.x) > accelerationThreshold || 
-                        Math.abs(acceleration.y) > accelerationThreshold) {
+                    if (Math.abs(filteredAcceleration.x) > accelerationThreshold || 
+                        Math.abs(filteredAcceleration.y) > accelerationThreshold) {
 
-                        // Calculate displacement based on acceleration and deltaTime
-                        const deltaX = acceleration.x * deltaTime * movementScale;
-                        const deltaY = acceleration.y * deltaTime * movementScale;
+                        // Calculate displacement based on filtered acceleration and deltaTime
+                        const deltaX = filteredAcceleration.x * deltaTime * deltaTime * 0.5 * movementScale;
+                        const deltaY = filteredAcceleration.y * deltaTime * deltaTime * 0.5 * movementScale;
+
+                        movementX.push(deltaX);
+                        movementY.push(deltaY);
+
+                        if (movementX.length > windowSize) movementX.shift();
+                        if (movementY.length > windowSize) movementY.shift();
+
+                        const averageDeltaX = movingAverage(movementX);
+                        const averageDeltaY = movingAverage(movementY);
 
                         // Update the position
-                        position.x += deltaX;
-                        position.y += deltaY;
+                        position.x += averageDeltaX;
+                        position.y += averageDeltaY;
 
                         // Ensure the position stays within the canvas
                         position.x = Math.max(0, Math.min(canvas.width, position.x));
                         position.y = Math.max(0, Math.min(canvas.height, position.y));
 
                         // Draw the path
-                        ctx.lineTo(position.x, position.y);
-                        ctx.stroke();
+                        if (Math.abs(position.x - lastPosition.x) > 0.5 || Math.abs(position.y - lastPosition.y) > 0.5) {
+                            ctx.lineTo(position.x, position.y);
+                            ctx.stroke();
+                            lastPosition = { ...position };
+                        }
                     }
 
                     // Display sensor data
                     sensorDataElement.innerText = `
-                        Acceleration X: ${acceleration.x.toFixed(2)} m/s²,
-                        Acceleration Y: ${acceleration.y.toFixed(2)} m/s²,
-                        Acceleration Z: ${acceleration.z.toFixed(2)} m/s²
+                        Acceleration X: ${filteredAcceleration.x.toFixed(2)} m/s²,
+                        Acceleration Y: ${filteredAcceleration.y.toFixed(2)} m/s²,
+                        Acceleration Z: ${filteredAcceleration.z.toFixed(2)} m/s²
                     `;
                 }
 
