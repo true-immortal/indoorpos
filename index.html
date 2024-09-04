@@ -77,10 +77,14 @@
                 const filteredAccX = lowPassFilter(accX, prevAcceleration.x);
                 const filteredAccY = lowPassFilter(accY, prevAcceleration.y);
 
+                // Invert X and Y axes to switch left and right directions
+                const movementX = -filteredAccX * deltaTime * 10; // Move left/right based on acceleration
+                const movementY = filteredAccY * deltaTime * 10; // Move up/down based on acceleration
+
                 // Update position only if significant movement detected
-                if (Math.abs(filteredAccX) > movementThreshold || Math.abs(filteredAccY) > movementThreshold) {
-                    lastPosition.x += filteredAccX * deltaTime * 10; // Scale factor for better visualization
-                    lastPosition.y += filteredAccY * deltaTime * 10;
+                if (Math.abs(movementX) > movementThreshold || Math.abs(movementY) > movementThreshold) {
+                    lastPosition.x += movementX;
+                    lastPosition.y += movementY;
 
                     // Boundary handling
                     if (lastPosition.x < 0) lastPosition.x = 0;
