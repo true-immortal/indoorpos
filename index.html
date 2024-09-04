@@ -38,6 +38,7 @@
         let lastTimestamp = 0;
         const stepLength = 0.7; // Average step length in meters
         let heading = 0; // Current heading in radians
+        const movementThreshold = 1.0; // Movement threshold to reduce noise
 
         // Initialize DeviceOrientationEvent listener
         function initSensors() {
@@ -58,9 +59,11 @@
             // Convert alpha to radians
             heading = alpha * Math.PI / 180;
 
-            // Simulate step detection and movement
+            // Use the tilt data to check for movement
+            const tiltMagnitude = Math.sqrt(beta * beta + gamma * gamma);
             const timestamp = Date.now();
-            if (timestamp - lastTimestamp > 500) { // Assuming step detection every 500ms
+
+            if (timestamp - lastTimestamp > 500 && tiltMagnitude > movementThreshold) { // Check if movement detected
                 // Simulate step detection
                 stepCount++;
                 const distance = stepCount * stepLength;
