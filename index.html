@@ -3,122 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Path Tracing with Sensors (Enhanced Stability)</title>
+    <title>Path Tracing App</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin-top: 20px;
-        }
-        canvas {
-            border: 1px solid black;
+        #map {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #000;
+            position: relative;
             background-color: #f0f0f0;
+            overflow: hidden;
+        }
+        .marker {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: red;
+            border-radius: 50%;
         }
     </style>
 </head>
 <body>
-
-    <h1>Path Tracing with Sensors</h1>
-    <canvas id="canvas" width="400" height="400"></canvas>
-    <p id="sensorData">Waiting for sensor data...</p>
+    <h1>Path Tracing</h1>
+    <div id="map"></div>
+    <button id="startTracking">Start Tracking</button>
+    <button id="stopTracking">Stop Tracking</button>
 
     <script>
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const sensorDataElement = document.getElementById('sensorData');
+        document.addEventListener('DOMContentLoaded', function() {
+            let tracking = false;
+            let previousX = 0;
+            let previousY = 0;
+            const movementThreshold = 0.5; // Minimum movement to consider as significant
 
-        // Initial position in the middle of the canvas
-        let position = { x: canvas.width / 2, y: canvas.height / 2 };
-        let lastPosition = { ...position };
-        let lastTimestamp = null;
+            const map = document.getElementById('map');
+            let lastPosition = { x: map.offsetWidth / 2, y: map.offsetHeight / 2 };
 
-        // Threshold to filter out noise and scale for movement
-        const accelerationThreshold = 0.2;
-        const movementScale = 0.05; 
+            const updatePosition = (x, y) => {
+                const marker = document.createElement('div');
+                marker.className = 'marker';
+                marker.style.left = `${x}px`;
+                marker.style.top = `${y}px`;
+                map.appendChild(marker);
+            };
 
-        // Low-pass filter constants
-        const alpha = 0.8;
-        let filteredAcceleration = { x: 0, y: 0, z: 0 };
+            const handleDeviceMotion = (event) => {
+                if (!tracking) return;
 
-        // Moving average window size
-        const windowSize = 5;
-        let movementX = [];
-        let movementY = [];
+                const { accelerationIncludingGravity } = event;
+                const x = accelerationIncludingGravity.x;
+                const y = accelerationIncludingGravity.y;
 
-        // Draw the starting point
-        ctx.beginPath();
-        ctx.moveTo(position.x, position.y);
+                // Calculate movement
+                const deltaX = x - previousX;
+                const deltaY = y - previousY;
 
-        // Low-pass filter function
-        function lowPassFilter(newValue, previousValue) {
-            return alpha * previousValue + (1 - alpha) * newValue;
-        }
+                // Determine direction
+                let direction = '';
 
-        // Moving average calculation
-        function movingAverage(values) {
-            const sum = values.reduce((a, b) => a + b, 0);
-            return sum / values.length;
-        }
-
-        // Listen for device motion events
-        if (window.DeviceMotionEvent) {
-            window.addEventListener('devicemotion', (event) => {
-                const acceleration = event.accelerationIncludingGravity;
-                const timestamp = event.timeStamp;
-
-                if (acceleration && lastTimestamp !== null) {
-                    // Apply low-pass filter
-                    filteredAcceleration.x = lowPassFilter(acceleration.x, filteredAcceleration.x);
-                    filteredAcceleration.y = lowPassFilter(acceleration.y, filteredAcceleration.y);
-
-                    const deltaTime = (timestamp - lastTimestamp) / 1000; // in seconds
-
-                    if (Math.abs(filteredAcceleration.x) > accelerationThreshold || 
-                        Math.abs(filteredAcceleration.y) > accelerationThreshold) {
-
-                        // Calculate displacement based on filtered acceleration and deltaTime
-                        const deltaX = filteredAcceleration.x * deltaTime * deltaTime * 0.5 * movementScale;
-                        const deltaY = filteredAcceleration.y * deltaTime * deltaTime * 0.5 * movementScale;
-
-                        movementX.push(deltaX);
-                        movementY.push(deltaY);
-
-                        if (movementX.length > windowSize) movementX.shift();
-                        if (movementY.length > windowSize) movementY.shift();
-
-                        const averageDeltaX = movingAverage(movementX);
-                        const averageDeltaY = movingAverage(movementY);
-
-                        // Update the position
-                        position.x += averageDeltaX;
-                        position.y += averageDeltaY;
-
-                        // Ensure the position stays within the canvas
-                        position.x = Math.max(0, Math.min(canvas.width, position.x));
-                        position.y = Math.max(0, Math.min(canvas.height, position.y));
-
-                        // Draw the path
-                        if (Math.abs(position.x - lastPosition.x) > 0.5 || Math.abs(position.y - lastPosition.y) > 0.5) {
-                            ctx.lineTo(position.x, position.y);
-                            ctx.stroke();
-                            lastPosition = { ...position };
-                        }
+                if (Math.abs(deltaX) > movementThreshold || Math.abs(deltaY) > movementThreshold) {
+                    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                        direction = deltaX > 0 ? 'Right' : 'Left';
+                    } else {
+                        direction = deltaY > 0 ? 'Down' : 'Up';
                     }
 
-                    // Display sensor data
-                    sensorDataElement.innerText = `
-                        Acceleration X: ${filteredAcceleration.x.toFixed(2)} m/s²,
-                        Acceleration Y: ${filteredAcceleration.y.toFixed(2)} m/s²,
-                        Acceleration Z: ${filteredAcceleration.z.toFixed(2)} m/s²
-                    `;
+                    // Update position
+                    lastPosition.x += deltaX;
+                    lastPosition.y += deltaY;
+                    updatePosition(lastPosition.x, lastPosition.y);
+
+                    console.log('Direction:', direction);
                 }
 
-                lastTimestamp = timestamp;
-            });
-        } else {
-            sensorDataElement.innerText = 'DeviceMotionEvent is not supported on this device/browser.';
-        }
-    </script>
+                previousX = x;
+                previousY = y;
+            };
 
+            document.getElementById('startTracking').addEventListener('click', () => {
+                tracking = true;
+                window.addEventListener('devicemotion', handleDeviceMotion);
+            });
+
+            document.getElementById('stopTracking').addEventListener('click', () => {
+                tracking = false;
+                window.removeEventListener('devicemotion', handleDeviceMotion);
+            });
+        });
+    </script>
 </body>
 </html>
