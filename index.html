@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Path Tracing App</title>
+    <title>Indoor Navigation System</title>
     <style>
         #map {
             width: 100%;
-            height: 500px;
+            height: 600px;
             border: 1px solid #000;
             position: relative;
-            background-color: #f0f0f0;
+            background: url('your-floorplan-image.jpg') no-repeat center center;
+            background-size: cover;
             overflow: hidden;
         }
         .marker {
@@ -26,7 +27,7 @@
     </style>
 </head>
 <body>
-    <h1>Path Tracing</h1>
+    <h1>Indoor Navigation System</h1>
     <div id="map"></div>
     <button id="startTracking">Start Tracking</button>
     <button id="stopTracking">Stop Tracking</button>
@@ -35,14 +36,12 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             let tracking = false;
-            let lastPosition = { x: 0, y: 0 };
-            let previousAcceleration = { x: 0, y: 0, z: 0 };
-            let previousGyro = { alpha: 0, beta: 0, gamma: 0 };
+            let lastPosition = { x: 100, y: 100 }; // Initial position in pixels
             const map = document.getElementById('map');
             const mapWidth = map.offsetWidth;
             const mapHeight = map.offsetHeight;
 
-            // Calibration values
+            // Calibration and filter parameters
             const calibration = {
                 accOffsetX: 0,
                 accOffsetY: 0,
@@ -55,47 +54,7 @@
             const movementThreshold = 0.2; // Minimum movement to consider as significant
             const updateInterval = 100; // Update interval in milliseconds
 
-            // Kalman Filter parameters
-            const kalman = {
-                Q_angle: 0.001, // Process noise covariance for the accelerometer
-                Q_bias: 0.003, // Process noise covariance for the gyro bias
-                R_angle: 0.03, // Measurement noise covariance
-                angle: 0, // Angle calculated by the Kalman filter
-                bias: 0, // Gyro bias calculated by the Kalman filter
-                rate: 0, // Rate of change of the angle
-                P: [0, 0, 0, 0] // Error covariance matrix
-            };
-
-            const kalmanFilter = (newAngle, newRate) => {
-                let angle = kalman.angle;
-                let bias = kalman.bias;
-                const P = kalman.P;
-
-                // Prediction update
-                kalman.rate = newRate - bias;
-                angle += updateInterval / 1000 * kalman.rate;
-                P[0] += updateInterval / 1000 * (updateInterval / 1000 * P[2] - P[0]);
-                P[1] -= updateInterval / 1000 * P[1];
-                P[2] += updateInterval / 1000 * P[3];
-                P[3] += kalman.Q_bias * updateInterval / 1000;
-
-                // Measurement update
-                const y = newAngle - angle;
-                const S = P[0] + kalman.R_angle;
-                const K = [P[0] / S, P[2] / S];
-                angle += K[0] * y;
-                bias += K[1] * y;
-                P[0] -= K[0] * P[0];
-                P[1] -= K[0] * P[1];
-                P[2] -= K[1] * P[2];
-                P[3] -= K[1] * P[3];
-
-                kalman.angle = angle;
-                kalman.bias = bias;
-
-                return angle;
-            };
-
+            // Low-pass filter for smoothing
             const lowPassFilter = (value, previousValue, alpha) => {
                 return alpha * value + (1 - alpha) * previousValue;
             };
@@ -119,23 +78,16 @@
                 const accY = acceleration.y - calibration.accOffsetY;
 
                 // Apply low-pass filter to smooth data
-                const filteredAccX = lowPassFilter(accX, previousAcceleration.x, 0.2);
-                const filteredAccY = lowPassFilter(accY, previousAcceleration.y, 0.2);
+                const filteredAccX = lowPassFilter(accX, lastPosition.x, 0.2);
+                const filteredAccY = lowPassFilter(accY, lastPosition.y, 0.2);
 
-                // Apply filtering
+                // Apply movement detection
                 const ax = Math.abs(filteredAccX) > movementThreshold ? filteredAccX : 0;
                 const ay = Math.abs(filteredAccY) > movementThreshold ? filteredAccY : 0;
 
-                // Kalman filter application
-                const angleX = kalmanFilter(ax, gyro.alpha - calibration.gyroOffsetAlpha);
-                const angleY = kalmanFilter(ay, gyro.beta - calibration.gyroOffsetBeta);
-
-                // Calculate movement
-                const deltaX = angleX * updateInterval / 1000;
-                const deltaY = angleY * updateInterval / 1000;
-
-                lastPosition.x += deltaX;
-                lastPosition.y += deltaY;
+                // Update position
+                lastPosition.x += ax * updateInterval / 1000;
+                lastPosition.y += ay * updateInterval / 1000;
 
                 // Boundary handling
                 if (lastPosition.x < 0) lastPosition.x = 0;
@@ -146,15 +98,9 @@
                 // Update marker position on map
                 updatePosition(lastPosition.x, lastPosition.y);
 
-                // Update previous values
-                previousAcceleration.x = filteredAccX;
-                previousAcceleration.y = filteredAccY;
-                previousGyro = gyro;
-
                 // Debugging output
                 document.getElementById('debug').innerHTML = `
                     Acceleration: X: ${filteredAccX.toFixed(2)}, Y: ${filteredAccY.toFixed(2)}<br>
-                    Gyroscope: Alpha: ${gyro.alpha.toFixed(2)}, Beta: ${gyro.beta.toFixed(2)}, Gamma: ${gyro.gamma.toFixed(2)}<br>
                     Position: X: ${lastPosition.x.toFixed(2)}, Y: ${lastPosition.y.toFixed(2)}
                 `;
             };
