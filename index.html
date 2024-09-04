@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Indoor Navigation System</title>
+    <title>BLE Indoor Navigation</title>
     <style>
         #map {
             width: 100%;
@@ -14,11 +14,11 @@
             background-size: cover;
             overflow: hidden;
         }
-        .marker {
+        .device {
             position: absolute;
             width: 10px;
             height: 10px;
-            background-color: red;
+            background-color: blue;
             border-radius: 50%;
         }
         #debug {
@@ -27,133 +27,108 @@
     </style>
 </head>
 <body>
-    <h1>Indoor Navigation System</h1>
+    <h1>Indoor Navigation System using BLE</h1>
     <div id="map"></div>
-    <button id="startTracking">Start Tracking</button>
-    <button id="stopTracking">Stop Tracking</button>
-    <button id="calibrate">Calibrate</button>
+    <button id="scanBLE">Start Scanning for BLE Devices</button>
+    <button id="clearMap">Clear Map</button>
     <div id="debug"></div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            let tracking = false;
-            let calibrating = false;
-            let calibrationOffsets = { accX: 0, accY: 0, accZ: 0 };
-            let lastPosition = { x: 100, y: 100 }; // Initial position
-            let prevAcceleration = { x: 0, y: 0 };
-            let prevTime = Date.now();
-            const map = document.getElementById('map');
-            const mapWidth = map.offsetWidth;
-            const mapHeight = map.offsetHeight;
+        // Check if the Web Bluetooth API is available
+        if (!navigator.bluetooth) {
+            document.getElementById('debug').innerHTML = 'Web Bluetooth API not supported.';
+        }
 
-            const movementThreshold = 0.2; // Minimum movement to consider as significant
-            const alpha = 0.2; // Smoothing factor for low-pass filter
+        const map = document.getElementById('map');
+        const mapWidth = map.offsetWidth;
+        const mapHeight = map.offsetHeight;
 
-            // Low-pass filter for smoothing
-            const lowPassFilter = (value, previousValue) => {
-                return alpha * value + (1 - alpha) * previousValue;
-            };
+        // Function to start scanning for BLE devices
+        async function scanBLEDevices() {
+            try {
+                // Request device
+                const device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: [] // Specify services if needed
+                });
 
-            const updatePosition = (x, y) => {
-                const marker = document.createElement('div');
-                marker.className = 'marker';
-                marker.style.left = `${x}px`;
-                marker.style.top = `${y}px`;
-                map.appendChild(marker);
-            };
-
-            const handleDeviceMotion = (event) => {
-                if (!tracking) return;
-
-                const acceleration = event.accelerationIncludingGravity;
-                const currentTime = Date.now();
-                const deltaTime = (currentTime - prevTime) / 1000; // Time in seconds
-
-                // Apply calibration offsets
-                const accX = acceleration.x - calibrationOffsets.accX;
-                const accY = acceleration.y - calibrationOffsets.accY;
-
-                // Apply low-pass filter to smooth data
-                const filteredAccX = lowPassFilter(accX, prevAcceleration.x);
-                const filteredAccY = lowPassFilter(accY, prevAcceleration.y);
-
-                // Invert X and Y axes to switch left and right directions
-                const movementX = -filteredAccX * deltaTime * 10; // Move left/right based on acceleration
-                const movementY = filteredAccY * deltaTime * 10; // Move up/down based on acceleration
-
-                // Update position only if significant movement detected
-                if (Math.abs(movementX) > movementThreshold || Math.abs(movementY) > movementThreshold) {
-                    lastPosition.x += movementX;
-                    lastPosition.y += movementY;
-
-                    // Boundary handling
-                    if (lastPosition.x < 0) lastPosition.x = 0;
-                    if (lastPosition.x > mapWidth) lastPosition.x = mapWidth;
-                    if (lastPosition.y < 0) lastPosition.y = 0;
-                    if (lastPosition.y > mapHeight) lastPosition.y = mapHeight;
-
-                    // Update marker position on map
-                    updatePosition(lastPosition.x, lastPosition.y);
-                }
-
-                // Update previous values
-                prevAcceleration.x = filteredAccX;
-                prevAcceleration.y = filteredAccY;
-                prevTime = currentTime;
-
-                // Debugging output
-                document.getElementById('debug').innerHTML = `
-                    Acceleration: X: ${filteredAccX.toFixed(2)}, Y: ${filteredAccY.toFixed(2)}<br>
-                    Position: X: ${lastPosition.x.toFixed(2)}, Y: ${lastPosition.y.toFixed(2)}
-                `;
-            };
-
-            const calibrate = () => {
-                calibrating = true;
-                const accXReadings = [];
-                const accYReadings = [];
-                const accZReadings = [];
-                const numReadings = 100; // Number of readings for calibration
-
-                const calibrationInterval = setInterval(() => {
-                    if (accXReadings.length >= numReadings) {
-                        clearInterval(calibrationInterval);
-                        calibrationOffsets.accX = accXReadings.reduce((a, b) => a + b) / numReadings;
-                        calibrationOffsets.accY = accYReadings.reduce((a, b) => a + b) / numReadings;
-                        calibrationOffsets.accZ = accZReadings.reduce((a, b) => a + b) / numReadings;
-                        calibrating = false;
-                        document.getElementById('debug').innerHTML += '<br>Calibration complete!';
-                        return;
-                    }
-                    // Accumulate readings
-                    window.addEventListener('devicemotion', (event) => {
-                        if (calibrating) {
-                            accXReadings.push(event.accelerationIncludingGravity.x);
-                            accYReadings.push(event.accelerationIncludingGravity.y);
-                            accZReadings.push(event.accelerationIncludingGravity.z);
+                // Connect to the device
+                const server = await device.gatt.connect();
+                const services = await server.getPrimaryServices();
+                
+                // Handle characteristics (For demonstration, use a battery service)
+                services.forEach(async (service) => {
+                    const characteristics = await service.getCharacteristics();
+                    characteristics.forEach(characteristic => {
+                        // Monitor the characteristic value for updates
+                        if (characteristic.properties.notify) {
+                            characteristic.startNotifications();
+                            characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
                         }
                     });
-                }, 100); // Collect data every 100 ms
-            };
+                });
 
-            window.addEventListener('devicemotion', handleDeviceMotion);
+                document.getElementById('debug').innerHTML = `Connected to: ${device.name}`;
+            } catch (error) {
+                console.log('Error:', error);
+                document.getElementById('debug').innerHTML = `Error: ${error.message}`;
+            }
+        }
 
-            document.getElementById('startTracking').addEventListener('click', () => {
-                tracking = true;
-                lastPosition = { x: 100, y: 100 }; // Reset position on start
-                document.getElementById('map').innerHTML = ''; // Clear previous path
-            });
+        // Handle characteristic value changes (RSSI or similar)
+        function handleCharacteristicValueChanged(event) {
+            const characteristic = event.target;
+            const value = characteristic.value;
+            
+            // Example: Process RSSI value (this part needs to be adapted to your BLE device's characteristic)
+            const rssi = parseRSSI(value); // Function to extract RSSI from characteristic value
+            
+            // Update position on map based on RSSI value
+            updateDeviceMarker(rssi);
+        }
 
-            document.getElementById('stopTracking').addEventListener('click', () => {
-                tracking = false;
-            });
+        // Function to parse RSSI from characteristic value (adapt this based on actual device)
+        function parseRSSI(value) {
+            // Example parsing (assuming RSSI is a single byte)
+            return value.getInt8(0); // Adapt based on actual BLE data format
+        }
 
-            document.getElementById('calibrate').addEventListener('click', () => {
-                calibrate();
-            });
+        // Update device marker based on RSSI value
+        function updateDeviceMarker(rssi) {
+            const distance = calculateDistanceFromRSSI(rssi); // Convert RSSI to distance
 
-            // Ensure correct initialization of position on page load
-            updatePosition(lastPosition.x, lastPosition.y);
+            // Example positioning logic (this should be replaced with your positioning algorithm)
+            const x = Math.random() * mapWidth; // Replace with actual x-coordinate
+            const y = Math.random() * mapHeight; // Replace with actual y-coordinate
+
+            const deviceMarker = document.createElement('div');
+            deviceMarker.className = 'device';
+            deviceMarker.style.left = `${x}px`;
+            deviceMarker.style.top = `${y}px`;
+            map.appendChild(deviceMarker);
+
+            document.getElementById('debug').innerHTML += `<br>Device RSSI: ${rssi}, Position: X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}`;
+        }
+
+        // Convert RSSI to distance (simple model; replace with actual algorithm)
+        function calculateDistanceFromRSSI(rssi) {
+            const txPower = -59; // Transmit power at 1 meter (change based on your device)
+            if (rssi === 0) return -1.0; // if we cannot determine accuracy, return -1.
+            const ratio = rssi * 1.0 / txPower;
+            if (ratio < 1.0) return Math.pow(ratio, 10);
+            else {
+                const distance =  (0.89976) * Math.pow(ratio, 7.7095) + 0.111;
+                return distance;
+            }
+        }
+
+        // Handle scanning for BLE devices
+        document.getElementById('scanBLE').addEventListener('click', scanBLEDevices);
+
+        // Clear map markers
+        document.getElementById('clearMap').addEventListener('click', () => {
+            const markers = document.querySelectorAll('.device');
+            markers.forEach(marker => marker.remove());
         });
     </script>
 </body>
