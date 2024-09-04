@@ -27,46 +27,54 @@
     </style>
 </head>
 <body>
-    <h1>Indoor Navigation System using Device Orientation</h1>
+    <h1>Indoor Navigation System</h1>
     <div id="map"></div>
     <button id="clearMap">Clear Map</button>
     <div id="debug"></div>
 
     <script>
         let x = 0, y = 0; // Initial position
-        let stepCount = 0;
+        let lastX = 0, lastY = 0;
         let lastTimestamp = 0;
         const stepLength = 0.7; // Average step length in meters
-        let heading = 0; // Current heading in radians
-        const movementThreshold = 1.0; // Movement threshold to reduce noise
+        const movementThreshold = 0.5; // Movement threshold to reduce noise
+        const accelerationThreshold = 0.5; // Acceleration threshold to detect steps
 
         // Initialize DeviceOrientationEvent listener
         function initSensors() {
-            if (window.DeviceOrientationEvent) {
+            if (window.DeviceOrientationEvent && window.DeviceMotionEvent) {
                 window.addEventListener('deviceorientation', handleOrientation);
-                document.getElementById('debug').innerHTML = 'Device Orientation API initialized.';
+                window.addEventListener('devicemotion', handleMotion);
+                document.getElementById('debug').innerHTML = 'Sensors initialized.';
             } else {
-                document.getElementById('debug').innerHTML = 'Device Orientation API not supported.';
+                document.getElementById('debug').innerHTML = 'Device Orientation and Motion APIs not supported.';
             }
         }
 
         // Handle DeviceOrientationEvent data
         function handleOrientation(event) {
-            const alpha = event.alpha; // Rotation around the z-axis (compass direction)
-            const beta = event.beta; // Tilt left/right
-            const gamma = event.gamma; // Tilt front/back
-
             // Convert alpha to radians
-            heading = alpha * Math.PI / 180;
+            const alpha = event.alpha || 0;
+            const heading = alpha * Math.PI / 180;
 
-            // Use the tilt data to check for movement
-            const tiltMagnitude = Math.sqrt(beta * beta + gamma * gamma);
+            // Store heading for movement calculation
+            window.currentHeading = heading;
+        }
+
+        // Handle DeviceMotionEvent data
+        function handleMotion(event) {
+            const acceleration = event.accelerationIncludingGravity;
             const timestamp = Date.now();
 
-            if (timestamp - lastTimestamp > 500 && tiltMagnitude > movementThreshold) { // Check if movement detected
+            // Calculate acceleration magnitude
+            const accelMagnitude = Math.sqrt(acceleration.x * acceleration.x +
+                                              acceleration.y * acceleration.y +
+                                              acceleration.z * acceleration.z);
+
+            // Check if movement detected
+            if (timestamp - lastTimestamp > 500 && accelMagnitude > accelerationThreshold) {
                 // Simulate step detection
-                stepCount++;
-                const distance = stepCount * stepLength;
+                const distance = stepLength;
                 updatePosition(distance);
                 lastTimestamp = timestamp;
             }
@@ -74,19 +82,28 @@
 
         // Update user position on map
         function updatePosition(distance) {
+            const heading = window.currentHeading || 0;
             const dx = distance * Math.cos(heading);
             const dy = distance * Math.sin(heading);
 
+            // Calculate new position
             x += dx;
             y += dy;
 
-            const marker = document.createElement('div');
-            marker.className = 'user-marker';
-            marker.style.left = `${x}px`;
-            marker.style.top = `${y}px`;
-            document.getElementById('map').appendChild(marker);
+            // Ensure that the path only updates if there is significant movement
+            if (Math.abs(x - lastX) > movementThreshold || Math.abs(y - lastY) > movementThreshold) {
+                const marker = document.createElement('div');
+                marker.className = 'user-marker';
+                marker.style.left = `${x}px`;
+                marker.style.top = `${y}px`;
+                document.getElementById('map').appendChild(marker);
 
-            document.getElementById('debug').innerHTML += `<br>Position: X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}, Heading: ${heading.toFixed(2)}`;
+                // Update last position
+                lastX = x;
+                lastY = y;
+
+                document.getElementById('debug').innerHTML += `<br>Position: X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}, Heading: ${heading.toFixed(2)}`;
+            }
         }
 
         // Clear map markers
