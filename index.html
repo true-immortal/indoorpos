@@ -31,12 +31,66 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             let tracking = false;
-            let previousX = 0;
-            let previousY = 0;
-            const movementThreshold = 0.5; // Minimum movement to consider as significant
-
+            let lastPosition = { x: 0, y: 0 };
+            let previousAcceleration = { x: 0, y: 0, z: 0 };
+            let previousGyro = { alpha: 0, beta: 0, gamma: 0 };
             const map = document.getElementById('map');
-            let lastPosition = { x: map.offsetWidth / 2, y: map.offsetHeight / 2 };
+            const mapWidth = map.offsetWidth;
+            const mapHeight = map.offsetHeight;
+
+            // Calibration values
+            const calibration = {
+                accOffsetX: 0,
+                accOffsetY: 0,
+                accOffsetZ: 0,
+                gyroOffsetAlpha: 0,
+                gyroOffsetBeta: 0,
+                gyroOffsetGamma: 0
+            };
+
+            const movementThreshold = 0.2; // Minimum movement to consider as significant
+            const updateInterval = 100; // Update interval in milliseconds
+
+            // Kalman Filter parameters
+            const kalman = {
+                Q_angle: 0.001, // Process noise covariance for the accelerometer
+                Q_bias: 0.003, // Process noise covariance for the gyro bias
+                R_angle: 0.03, // Measurement noise covariance
+                angle: 0, // Angle calculated by the Kalman filter
+                bias: 0, // Gyro bias calculated by the Kalman filter
+                rate: 0, // Rate of change of the angle
+                P: [0, 0, 0, 0] // Error covariance matrix
+            };
+
+            const kalmanFilter = (newAngle, newRate) => {
+                let angle = kalman.angle;
+                let bias = kalman.bias;
+                const P = kalman.P;
+
+                // Prediction update
+                kalman.rate = newRate - bias;
+                angle += updateInterval / 1000 * kalman.rate;
+                P[0] += updateInterval / 1000 * (updateInterval / 1000 * P[2] - P[0]);
+                P[1] -= updateInterval / 1000 * P[1];
+                P[2] += updateInterval / 1000 * P[3];
+                P[3] += kalman.Q_bias * updateInterval / 1000;
+
+                // Measurement update
+                const y = newAngle - angle;
+                const S = P[0] + kalman.R_angle;
+                const K = [P[0] / S, P[2] / S];
+                angle += K[0] * y;
+                bias += K[1] * y;
+                P[0] -= K[0] * P[0];
+                P[1] -= K[0] * P[1];
+                P[2] -= K[1] * P[2];
+                P[3] -= K[1] * P[3];
+
+                kalman.angle = angle;
+                kalman.bias = bias;
+
+                return angle;
+            };
 
             const updatePosition = (x, y) => {
                 const marker = document.createElement('div');
@@ -49,45 +103,54 @@
             const handleDeviceMotion = (event) => {
                 if (!tracking) return;
 
-                const { accelerationIncludingGravity } = event;
-                const x = accelerationIncludingGravity.x;
-                const y = accelerationIncludingGravity.y;
+                const acceleration = event.accelerationIncludingGravity;
+                const gyro = event.rotationRate;
+
+                // Calibration
+                const accX = acceleration.x - calibration.accOffsetX;
+                const accY = acceleration.y - calibration.accOffsetY;
+
+                // Apply filtering
+                const ax = Math.abs(accX) > movementThreshold ? accX : 0;
+                const ay = Math.abs(accY) > movementThreshold ? accY : 0;
+
+                // Kalman filter application
+                const angleX = kalmanFilter(ax, gyro.alpha - calibration.gyroOffsetAlpha);
+                const angleY = kalmanFilter(ay, gyro.beta - calibration.gyroOffsetBeta);
 
                 // Calculate movement
-                const deltaX = x - previousX;
-                const deltaY = y - previousY;
+                const deltaX = angleX * updateInterval / 1000;
+                const deltaY = angleY * updateInterval / 1000;
 
-                // Determine direction
-                let direction = '';
+                lastPosition.x += deltaX;
+                lastPosition.y += deltaY;
 
-                if (Math.abs(deltaX) > movementThreshold || Math.abs(deltaY) > movementThreshold) {
-                    if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                        direction = deltaX > 0 ? 'Right' : 'Left';
-                    } else {
-                        direction = deltaY > 0 ? 'Down' : 'Up';
-                    }
+                // Boundary handling
+                if (lastPosition.x < 0) lastPosition.x = 0;
+                if (lastPosition.x > mapWidth) lastPosition.x = mapWidth;
+                if (lastPosition.y < 0) lastPosition.y = 0;
+                if (lastPosition.y > mapHeight) lastPosition.y = mapHeight;
 
-                    // Update position
-                    lastPosition.x += deltaX;
-                    lastPosition.y += deltaY;
-                    updatePosition(lastPosition.x, lastPosition.y);
+                // Update marker position on map
+                updatePosition(lastPosition.x, lastPosition.y);
 
-                    console.log('Direction:', direction);
-                }
-
-                previousX = x;
-                previousY = y;
+                // Update previous values
+                previousAcceleration = acceleration;
+                previousGyro = gyro;
             };
+
+            window.addEventListener('devicemotion', handleDeviceMotion);
 
             document.getElementById('startTracking').addEventListener('click', () => {
                 tracking = true;
-                window.addEventListener('devicemotion', handleDeviceMotion);
             });
 
             document.getElementById('stopTracking').addEventListener('click', () => {
                 tracking = false;
-                window.removeEventListener('devicemotion', handleDeviceMotion);
             });
+
+            // Ensure correct initialization of position on page load
+            updatePosition(lastPosition.x, lastPosition.y);
         });
     </script>
 </body>
