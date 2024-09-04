@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Path Drawer</title>
+    <style>
+        body { margin: 0; }
+        canvas { border: 1px solid black; }
+    </style>
+</head>
+<body>
+    <canvas id="pathCanvas" width="800" height="600"></canvas>
+    <script>
+        const canvas = document.getElementById('pathCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let x = canvas.width / 2;
+        let y = canvas.height / 2;
+
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y);
+        ctx.strokeStyle = 'blue';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        function updatePath(acceleration) {
+            x += acceleration.x * 10;
+            y -= acceleration.y * 10;
+
+            x = Math.max(0, Math.min(canvas.width, x));
+            y = Math.max(0, Math.min(canvas.height, y));
+
+            ctx.lineTo(x, y);
+            ctx.stroke();
+        }
+
+        if (window.DeviceOrientationEvent) {
+            window.addEventListener('deviceorientation', function(event) {
+                const beta = event.beta; // Rotation around x-axis
+                const gamma = event.gamma; // Rotation around y-axis
+
+                const acceleration = {
+                    x: beta,
+                    y: gamma
+                };
+
+                updatePath(acceleration);
+            }, true);
+        } else {
+            alert('DeviceOrientationEvent is not supported');
+        }
+    </script>
+</body>
+</html>
