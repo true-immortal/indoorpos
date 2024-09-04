@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Path Tracing with Sensors (Improved Accuracy)</title>
+    <title>Path Tracing with Sensors (Samsung Galaxy S21 FE)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -32,14 +32,12 @@
         let lastTimestamp = null;
 
         // Threshold to filter out noise
-        const accelerationThreshold = 0.2; // Adjust based on testing
-        const movementScale = 0.05; // Scale factor for movement
+        const accelerationThreshold = 0.05; // Lower threshold for high-sensitivity devices
+        const movementScale = 200; // Higher scale factor for better visibility
 
         // Draw the starting point
         ctx.beginPath();
-        ctx.arc(position.x, position.y, 5, 0, 2 * Math.PI);
-        ctx.fillStyle = 'red';
-        ctx.fill();
+        ctx.moveTo(position.x, position.y); // Start drawing path from the initial position
 
         // Listen for device motion events
         if (window.DeviceMotionEvent) {
@@ -55,8 +53,8 @@
                         Math.abs(acceleration.y) > accelerationThreshold) {
 
                         // Calculate displacement based on acceleration and deltaTime
-                        const deltaX = acceleration.x * deltaTime * deltaTime * 0.5 * movementScale;
-                        const deltaY = acceleration.y * deltaTime * deltaTime * 0.5 * movementScale;
+                        const deltaX = acceleration.x * deltaTime * movementScale;
+                        const deltaY = acceleration.y * deltaTime * movementScale;
 
                         // Update the position
                         position.x += deltaX;
